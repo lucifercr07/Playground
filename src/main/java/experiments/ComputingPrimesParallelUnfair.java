@@ -1,7 +1,10 @@
 package experiments;
 
 import com.google.common.base.Stopwatch;
+import org.apache.commons.math3.util.Pair;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -9,13 +12,58 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 // Counting number of prime numbers till 100,000,000 = 100 million
 // In this we'll divide 100M into 10 parts i.e 10M each
-// Total time taken for execution parallel unfair scan:: 14.17 s total prime numbers: 5761454
+// Total time taken for execution parallel unfair scan using plain threads: 14.27 s total prime numbers: 5761455
+// Total time taken for execution parallel unfair scan:: 13.56 s total prime numbers: 5761454
 public class ComputingPrimesParallelUnfair {
     private static int MAX_NUM = 100_000_000;
     private static AtomicInteger count = new AtomicInteger(0);
     private static int MAX_CONCURRENCY = 10;
 
     public static void main(String[] args) {
+        try {
+            usingPlainThreads();
+            // Resetting value for executor service run
+            count = new AtomicInteger(0);
+            usingExecutorService();
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private static void usingPlainThreads() throws InterruptedException {
+        Stopwatch timer = Stopwatch.createStarted();
+        // 10M batch size will be for 10 threads
+        final int batchSize = MAX_NUM / MAX_CONCURRENCY;
+        int start = 3;
+
+        List<Pair<Integer, Integer>> ranges = new ArrayList<>();
+
+        for (int i = 0; i < MAX_CONCURRENCY; i++) {
+            final int batchStart = start;
+            final int batchEndLength = start + batchSize;
+
+            ranges.add(new Pair<>(batchStart, batchEndLength));
+            start = batchEndLength + 1;
+        }
+
+        List<Thread> threadList = new ArrayList<>();
+        for (var range : ranges) {
+            threadList.add(new Thread(() -> checkPrimeForRange(range.getFirst(), range.getSecond())));
+        }
+
+        for (var thread : threadList) {
+            thread.start();
+        }
+
+        for (var thread : threadList) {
+            thread.join();
+        }
+
+        System.out.println("Total time taken for execution parallel unfair scan using plain threads: "
+                + timer.stop() + " total prime numbers: " + count);
+    }
+
+    private static void usingExecutorService() {
         ExecutorService service = Executors.newFixedThreadPool(MAX_NUM);
         // 10M batch size will be for 10 threads
         final int batchSize = MAX_NUM / MAX_CONCURRENCY;
